@@ -42,7 +42,7 @@ interface IRecoveryAccount {
     function startRecovery(
         address policyVerifier,
         bytes memory newOwner,
-        Permission[] memory permissions
+        Permissions[] memory permissions
     ) external;
 
     /**
@@ -55,7 +55,7 @@ interface IRecoveryAccount {
 
     function cancelRecoveryByGuardians(
         address policyVerifier,
-        Permission[] memory permissions
+        Permissions[] memory permissions
     ) external;
 
     /**

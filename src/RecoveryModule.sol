@@ -3,20 +3,16 @@ pragma solidity ^0.8.13;
 
 import "./TypesAndDecoders.sol";
 import "./interfaces/IPermissionVerifier.sol";
-import "./interfaces/IRecoveryAccount.sol";
+import "./interfaces/IAccount.sol";
 import "./interfaces/IRecoveryPolicyVerifier.sol";
 import "./libraries/HashLinkedList.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
-
-interface IUniPassWallet {
-    function isAuthorizedModule(address module) external returns (bool);
-}
 
 contract RecoveryModule {
     using HashLinkedList for mapping(bytes32 => bytes32);
 
     struct RecoveryEntry {
-        address[] newOwners;
+        bytes newOwners;
         uint256 executeAfter;
         uint256 nonce;
     }
@@ -49,6 +45,11 @@ contract RecoveryModule {
     bytes32 private constant _DOMAIN_SEPARATOR_TYPEHASH =
         0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f;
 
+    bytes32 internal constant _START_RECOVERY_TYPEHASH =
+        keccak256(
+            "startRecovery(address account,bytes newOwner,uint256 nonce)"
+        );
+
     mapping(address => uint256) walletRecoveryNonce;
     mapping(address => RecoveryPolicy[]) internal walletPolicies;
 
@@ -57,7 +58,7 @@ contract RecoveryModule {
 
     modifier authorized(address _wallet) {
         require(
-            IUniPassWallet(_wallet).isAuthorizedModule(address(this)),
+            IAccount(_wallet).isAuthorizedModule(address(this)),
             "unauthorized"
         );
         _;
@@ -145,19 +146,38 @@ contract RecoveryModule {
     function startRecovery(
         address account,
         uint256 index,
-        bytes memory newOwner,
+        bytes memory newOwners,
         Permissions memory permissions
     ) external {
         RecoveryPolicy storage policy = walletPolicies[account][index];
         require(policy.enabled, "unenabled policy");
-        bool _defaultPolicyVerifier = policy.policyVerifier == address(0);
 
-        for (uint256 i = 0; i < permissions.length - 1; i++) {
+        bytes32[] memory identityHashs = new bytes32[](
+            permissions.guardians.length
+        );
+        walletRecoveryNonce[account]++;
+
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                _DOMAIN_SEPARATOR_TYPEHASH,
+                keccak256(
+                    abi.encode(
+                        _START_RECOVERY_TYPEHASH,
+                        account,
+                        newOwners,
+                        walletRecoveryNonce[account]
+                    )
+                )
+            )
+        );
+
+        for (uint256 i = 0; i < permissions.guardians.length - 1; i++) {
             if (permissions.guardians[i].signer.length == 0) {
                 require(
                     SignatureChecker.isValidSignatureNow(
                         permissions.guardians[i].guardianVerifier,
-                        bytes32(uint256(0)),
+                        digest,
                         permissions.signatures[i]
                     ),
                     "invalid signature"
@@ -167,7 +187,7 @@ contract RecoveryModule {
                     IPermissionVerifier(
                         permissions.guardians[i].guardianVerifier
                     ).isValidPermission(
-                            bytes32(uint256(0)),
+                            digest,
                             permissions.guardians[i].signer,
                             permissions.signatures[i]
                         ),
@@ -175,15 +195,42 @@ contract RecoveryModule {
                 );
             }
 
-            if (_defaultPolicyVerifier) {
-                for (uint256 j = i + 1; j < permissions.guardians.length; j++) {
-                    if (permissions.guardian[i] == permissions.guardian[j]) {
-                        return true;
-                    }
+            identityHashs[i] = keccak256(abi.encode(permissions.guardians[i]));
+        }
+
+        uint256 cumulatedWeight = 0;
+        for (uint256 i = 0; i < identityHashs.length - 1; i++) {
+            cumulatedWeight += policy
+                .config
+                .guardianInfos[identityHashs[i]]
+                .property;
+            for (uint256 j = i + 1; j < identityHashs.length; j++) {
+                if (identityHashs[i] == identityHashs[j]) {
+                    revert("duplicated guradian");
                 }
-            } else {
-                IRecoveryPolicyVerifier(policy.policyVerifier).verifyRecoveryPolicy(permissions.guardians, configArg);
             }
+        }
+
+        uint48 lockPeriod = type(uint48).max;
+        for (uint i = 0; i < policy.config.thresholdConfigs.length; i++) {
+            if (cumulatedWeight > policy.config.thresholdConfigs[i].threshold) {
+                lockPeriod = policy.config.thresholdConfigs[i].lockPeriod;
+            } else {
+                break;
+            }
+        }
+
+        require(lockPeriod < type(uint48).max, "threshold unmatched");
+
+        if (lockPeriod == 0) {
+            IAccount(account).resetOwner(newOwners);
+        } else {
+            RecoveryEntry memory entry;
+            entry.newOwners = newOwners;
+            entry.nonce = walletRecoveryNonce[account];
+            entry.executeAfter = uint48(block.timestamp) + lockPeriod;
+
+            recoveryEntries[account] = entry;
         }
     }
 
@@ -191,20 +238,13 @@ contract RecoveryModule {
      * @dev Execute recovery
      * temporary state -> ownerKey rotation
      */
-    function executeRecovery(
-        address account,
-        address policyVerifier
-    ) external {}
+    function executeRecovery(address account) external {}
 
-    function cancelRecovery(
-        address account,
-        address policyVerifier
-    ) external InRecovering(account) {}
+    function cancelRecovery(address account) external InRecovering(account) {}
 
     function cancelRecoveryByGuardians(
         address account,
-        address policyVerifier,
-        Permission[] memory permissions
+        Permissions memory permissions
     ) external InRecovering(account) {}
 
     /**

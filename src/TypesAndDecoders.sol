@@ -25,7 +25,7 @@ struct GuardianInfo {
  */
 struct ThresholdConfig {
     uint32 threshold; // Threshold value
-    int48 lockPeriod; // Lock period for the threshold
+    uint48 lockPeriod; // Lock period for the threshold
 }
 
 /**
@@ -61,7 +61,7 @@ struct RecoveryPolicy {
     RecoveryConfig config;
 }
 
-struct PermissionS {
+struct Permissions {
     Identity[] guardians;
     bytes[] signatures;
 }
