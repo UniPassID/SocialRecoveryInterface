@@ -50,6 +50,9 @@ contract RecoveryModule {
             "startRecovery(address account,bytes newOwner,uint256 nonce)"
         );
 
+    bytes32 internal constant _CANCEL_RECOVERY_TYPEHASH =
+        keccak256("cancelRecovery(address account,uint256 nonce)");
+
     mapping(address => uint256) walletRecoveryNonce;
     mapping(address => RecoveryPolicy[]) internal walletPolicies;
 
@@ -100,7 +103,9 @@ contract RecoveryModule {
             );
     }
 
-    function updateGuardians(RecoveryPolicyArg[] memory policyArgs) public {
+    function updateGuardians(
+        RecoveryPolicyArg[] memory policyArgs
+    ) public authorized(msg.sender) NotInRecovering(msg.sender) {
         address account = msg.sender;
         delete walletPolicies[account];
         for (uint i = 0; i > policyArgs.length; i++) {
@@ -148,7 +153,7 @@ contract RecoveryModule {
         uint256 index,
         bytes memory newOwners,
         Permissions memory permissions
-    ) external {
+    ) external NotInRecovering(account) {
         RecoveryPolicy storage policy = walletPolicies[account][index];
         require(policy.enabled, "unenabled policy");
 
@@ -238,14 +243,93 @@ contract RecoveryModule {
      * @dev Execute recovery
      * temporary state -> ownerKey rotation
      */
-    function executeRecovery(address account) external {}
+    function executeRecovery(address account) external InRecovering(account) {
+        require(
+            recoveryEntries[account].executeAfter < block.timestamp,
+            "locking"
+        );
+        IAccount(account).resetOwner(recoveryEntries[account].newOwners);
+        delete recoveryEntries[account];
+    }
 
-    function cancelRecovery(address account) external InRecovering(account) {}
+    function cancelRecovery(
+        address account
+    ) external authorized(msg.sender) InRecovering(account) {
+        delete recoveryEntries[account];
+    }
 
     function cancelRecoveryByGuardians(
         address account,
+        uint256 index,
         Permissions memory permissions
-    ) external InRecovering(account) {}
+    ) external InRecovering(account) {
+        RecoveryPolicy storage policy = walletPolicies[account][index];
+        require(policy.enabled, "unenabled policy");
+
+        bytes32[] memory identityHashs = new bytes32[](
+            permissions.guardians.length
+        );
+        walletRecoveryNonce[account]++;
+
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                _DOMAIN_SEPARATOR_TYPEHASH,
+                keccak256(
+                    abi.encode(
+                        _CANCEL_RECOVERY_TYPEHASH,
+                        account,
+                        walletRecoveryNonce[account]
+                    )
+                )
+            )
+        );
+
+        for (uint256 i = 0; i < permissions.guardians.length - 1; i++) {
+            if (permissions.guardians[i].signer.length == 0) {
+                require(
+                    SignatureChecker.isValidSignatureNow(
+                        permissions.guardians[i].guardianVerifier,
+                        digest,
+                        permissions.signatures[i]
+                    ),
+                    "invalid signature"
+                );
+            } else {
+                require(
+                    IPermissionVerifier(
+                        permissions.guardians[i].guardianVerifier
+                    ).isValidPermission(
+                            digest,
+                            permissions.guardians[i].signer,
+                            permissions.signatures[i]
+                        ),
+                    "invalid signature"
+                );
+            }
+
+            identityHashs[i] = keccak256(abi.encode(permissions.guardians[i]));
+        }
+
+        uint256 cumulatedWeight = 0;
+        for (uint256 i = 0; i < identityHashs.length - 1; i++) {
+            cumulatedWeight += policy
+                .config
+                .guardianInfos[identityHashs[i]]
+                .property;
+            for (uint256 j = i + 1; j < identityHashs.length; j++) {
+                if (identityHashs[i] == identityHashs[j]) {
+                    revert("duplicated guradian");
+                }
+            }
+        }
+        for (uint i = 0; i < policy.config.thresholdConfigs.length; i++) {
+            if (cumulatedWeight > policy.config.thresholdConfigs[i].threshold) {
+                delete recoveryEntries[account];
+                return;
+            }
+        }
+    }
 
     /**
      * @dev Get wallet recovery info, recovery policy config, check if an identity is a guardian, get the nonce of social recovery, and get the recovery status of the wallet
@@ -253,13 +337,8 @@ contract RecoveryModule {
     function isGuardian(
         address account,
         Identity memory guardian
-    )
-        public
-        view
-        returns (bool, RecoveryPolicyArg[] memory recoveryPolicyConfigs)
-    {
-        recoveryPolicyConfigs = new RecoveryPolicyArg[](1);
-        return (false, recoveryPolicyConfigs);
+    ) public view returns (bool) {
+        return (false);
     }
 
     function getRecoveryPolicies(
