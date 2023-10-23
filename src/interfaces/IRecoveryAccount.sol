@@ -7,7 +7,7 @@ interface IRecoveryAccount {
     /**
      * @dev Events for updating guardians, starting for recovery, executing recovery, and canceling recovery
      */
-    event GuardiansUpdated(RecoveryPolicyArg[] recoveryPolicies);
+    event GuardiansUpdated(RecoveryConfigArg[] recoveryConfigs);
     event RecoveryStarted(bytes newOwners, uint256 nonce, uint48 expireTime);
     event RecoveryExecuted(bytes newOwners, uint256 nonce);
     event RecoveryCanceled(uint256 nonce);
@@ -31,9 +31,7 @@ interface IRecoveryAccount {
      * @dev Update /replace guardians and recovery policies
      * Multiple recovery policies can be set using an array of RecoveryPolicyConfig
      */
-    function updateGuardians(
-        RecoveryPolicyArg[] memory policyArgs
-    ) external;
+    function updateGuardians(RecoveryConfigArg[] memory configArgs) external;
 
     // Generate EIP-712 message hash,
     // Iterate over signatures for verification,
@@ -42,7 +40,7 @@ interface IRecoveryAccount {
     function startRecovery(
         address policyVerifier,
         bytes memory newOwner,
-        Permissions[] memory permissions
+        Permission[] memory permissions
     ) external;
 
     /**
@@ -55,23 +53,18 @@ interface IRecoveryAccount {
 
     function cancelRecoveryByGuardians(
         address policyVerifier,
-        Permissions[] memory permissions
+        Permission[] memory permissions
     ) external;
 
     /**
      * @dev Get wallet recovery info, recovery policy config, check if an identity is a guardian, get the nonce of social recovery, and get the recovery status of the wallet
      */
-    function isGuardian(
-        Identity memory guardian
-    )
-        external
-        view
-        returns (bool);
+    function isGuardian(Identity memory guardian) external view returns (bool);
 
     function getRecoveryPolicies()
         external
         view
-        returns (RecoveryPolicyArg[] memory recoveryPolicyArgs);
+        returns (RecoveryConfigArg[] memory recoveryconfigArgs);
 
     function getRecoveryConfigs(
         address policyVerifier

@@ -12,12 +12,13 @@ interface IRecoveryPolicyVerifier {
      * Verification includes checking if guardians exist in the Guardians List
      */
     function verifyRecoveryPolicy(
-        Identity[] memory guardians,
-        RecoveryConfigArg memory configArg
-    ) external view returns (bool succ, uint48 lockPeriod);
+        Permission[] memory permissions,
+        uint64[] memory properties
+    ) external view returns (bool succ, uint64 weight);
 
     /**
      * @dev Returns supported policy settings and accompanying property definitions for Guardian.
      */
+     
     function getPolicyVerifierInfo() external view returns (bytes memory);
 }

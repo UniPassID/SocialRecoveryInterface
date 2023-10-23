@@ -20,16 +20,15 @@ contract RecoveryModule {
     /**
      * @dev Events for updating guardians, starting for recovery, executing recovery, and canceling recovery
      */
-    event GuardiansUpdated(
-        address account,
-        RecoveryPolicyArg[] recoveryPolicies
-    );
+    event GuardiansUpdated(address account);
+
     event RecoveryStarted(
         address account,
         bytes newOwners,
         uint256 nonce,
         uint48 expireTime
     );
+
     event RecoveryExecuted(address account, bytes newOwners, uint256 nonce);
     event RecoveryCanceled(address account, uint256 nonce);
 
@@ -54,7 +53,7 @@ contract RecoveryModule {
         keccak256("cancelRecovery(address account,uint256 nonce)");
 
     mapping(address => uint256) walletRecoveryNonce;
-    mapping(address => RecoveryPolicy[]) internal walletPolicies;
+    mapping(address => RecoveryConfig[]) internal walletConfigs;
 
     mapping(address => mapping(bytes32 => uint256)) approvedRecords;
     mapping(address => RecoveryEntry) recoveryEntries;
@@ -103,63 +102,66 @@ contract RecoveryModule {
             );
     }
 
-    function updateGuardians(
-        RecoveryPolicyArg[] memory policyArgs
+    function updateConfigs(
+        RecoveryConfigArg[] memory configArgs
     ) public authorized(msg.sender) NotInRecovering(msg.sender) {
         address account = msg.sender;
-        delete walletPolicies[account];
-        for (uint i = 0; i > policyArgs.length; i++) {
-            _addPolicy(account, policyArgs[i]);
+        delete walletConfigs[account];
+        for (uint i = 0; i > configArgs.length; i++) {
+            _addConfig(account, configArgs[i]);
         }
     }
 
-    function addPolicy(
-        RecoveryPolicyArg memory policyArg
+    function addConfigs(
+        RecoveryConfigArg[] memory configArgs
+    ) public authorized(msg.sender) NotInRecovering(msg.sender) {
+        address account = msg.sender;
+        for (uint i = 0; i > configArgs.length; i++) {
+            _addConfig(account, configArgs[i]);
+        }
+    }
+
+    function addConfig(
+        RecoveryConfigArg memory configArg
     ) external authorized(msg.sender) NotInRecovering(msg.sender) {
         address account = msg.sender;
-        _addPolicy(account, policyArg);
+        _addConfig(account, configArg);
     }
 
-    function _addPolicy(
+    function _addConfig(
         address account,
-        RecoveryPolicyArg memory policyArg
+        RecoveryConfigArg memory configArg
     ) internal {
-        RecoveryPolicy storage policy = walletPolicies[account].push();
-        policy.policyVerifier = policyArg.policyVerifier;
+        RecoveryConfig storage config = walletConfigs[account].push();
+        config.policyVerifier = configArg.policyVerifier;
 
-        for (uint i = 0; i < policyArg.config.thresholdConfigs.length; i++) {
-            policy.config.thresholdConfigs.push(
-                policyArg.config.thresholdConfigs[i]
-            );
+        for (uint i = 0; i < configArg.thresholdConfigs.length; i++) {
+            config.thresholdConfigs.push(configArg.thresholdConfigs[i]);
         }
-        for (uint i = 0; i < policyArg.config.guardianInfos.length; i++) {
+        for (uint i = 0; i < configArg.guardianInfos.length; i++) {
             bytes32 identityHash = keccak256(
-                abi.encode(policyArg.config.guardianInfos[i])
+                abi.encode(configArg.guardianInfos[i])
             );
-            policy.enabled = true;
-            policy.config.identityHashs.add(identityHash);
-            policy.config.guardianInfos[identityHash] = policyArg
-                .config
-                .guardianInfos[i];
+            config.enabled = true;
+            config.identityHashs.add(identityHash);
+            config.guardianInfos[identityHash] = configArg.guardianInfos[i];
         }
     }
 
     // Generate EIP-712 message hash,
     // Iterate over signatures for verification,
     // Verify recovery policy,
-    // Store temporary state or recover immediately based on the result returned by verifyRecoveryPolicy.
+    // Store temporary state or recover immediately based on the result.
     function startRecovery(
         address account,
-        uint256 index,
+        uint256 configIndex,
         bytes memory newOwners,
-        Permissions memory permissions
+        Permission[] memory permissions
     ) external NotInRecovering(account) {
-        RecoveryPolicy storage policy = walletPolicies[account][index];
-        require(policy.enabled, "unenabled policy");
+        RecoveryConfig storage config = walletConfigs[account][configIndex];
+        require(config.enabled, "unenabled policy");
 
-        bytes32[] memory identityHashs = new bytes32[](
-            permissions.guardians.length
-        );
+        bytes32[] memory identityHashs = new bytes32[](permissions.length);
         walletRecoveryNonce[account]++;
 
         bytes32 digest = keccak256(
@@ -177,50 +179,67 @@ contract RecoveryModule {
             )
         );
 
-        for (uint256 i = 0; i < permissions.guardians.length - 1; i++) {
-            if (permissions.guardians[i].signer.length == 0) {
+        for (uint256 i = 0; i < permissions.length - 1; i++) {
+            if (permissions[i].guardian.signer.length == 0) {
                 require(
                     SignatureChecker.isValidSignatureNow(
-                        permissions.guardians[i].guardianVerifier,
+                        permissions[i].guardian.guardianVerifier,
                         digest,
-                        permissions.signatures[i]
+                        permissions[i].signature
                     ),
                     "invalid signature"
                 );
             } else {
                 require(
                     IPermissionVerifier(
-                        permissions.guardians[i].guardianVerifier
+                        permissions[i].guardian.guardianVerifier
                     ).isValidPermission(
                             digest,
-                            permissions.guardians[i].signer,
-                            permissions.signatures[i]
+                            permissions[i].guardian.signer,
+                            permissions[i].signature
                         ),
                     "invalid signature"
                 );
             }
 
-            identityHashs[i] = keccak256(abi.encode(permissions.guardians[i]));
+            identityHashs[i] = keccak256(abi.encode(permissions[i].guardian));
         }
 
         uint256 cumulatedWeight = 0;
-        for (uint256 i = 0; i < identityHashs.length - 1; i++) {
-            cumulatedWeight += policy
-                .config
-                .guardianInfos[identityHashs[i]]
-                .property;
-            for (uint256 j = i + 1; j < identityHashs.length; j++) {
-                if (identityHashs[i] == identityHashs[j]) {
-                    revert("duplicated guradian");
+        if (config.policyVerifier == address(0)) {
+            for (uint256 i = 0; i < identityHashs.length - 1; i++) {
+                cumulatedWeight += config
+                    .guardianInfos[identityHashs[i]]
+                    .property;
+                for (uint256 j = i + 1; j < identityHashs.length; j++) {
+                    if (identityHashs[i] == identityHashs[j]) {
+                        revert("duplicated guradian");
+                    }
                 }
             }
+        } else {
+            uint64[] memory properties = new uint64[](identityHashs.length);
+            for (uint256 i = 0; i < identityHashs.length - 1; i++) {
+                properties[i] += config
+                    .guardianInfos[identityHashs[i]]
+                    .property;
+                for (uint256 j = i + 1; j < identityHashs.length; j++) {
+                    if (identityHashs[i] == identityHashs[j]) {
+                        revert("duplicated guradian");
+                    }
+                }
+            }
+            (bool succ, uint256 weight) = IRecoveryPolicyVerifier(
+                config.policyVerifier
+            ).verifyRecoveryPolicy(permissions, properties);
+            require(succ, "failed permissions");
+            cumulatedWeight = weight;
         }
 
         uint48 lockPeriod = type(uint48).max;
-        for (uint i = 0; i < policy.config.thresholdConfigs.length; i++) {
-            if (cumulatedWeight > policy.config.thresholdConfigs[i].threshold) {
-                lockPeriod = policy.config.thresholdConfigs[i].lockPeriod;
-            } else {
+        for (uint i = 0; i < config.thresholdConfigs.length; i++) {
+            if (cumulatedWeight > config.thresholdConfigs[i].threshold) {
+                lockPeriod = config.thresholdConfigs[i].lockPeriod;
                 break;
             }
         }
@@ -260,15 +279,13 @@ contract RecoveryModule {
 
     function cancelRecoveryByGuardians(
         address account,
-        uint256 index,
-        Permissions memory permissions
+        uint256 configIndex,
+        Permission[] memory permissions
     ) external InRecovering(account) {
-        RecoveryPolicy storage policy = walletPolicies[account][index];
-        require(policy.enabled, "unenabled policy");
+        RecoveryConfig storage config = walletConfigs[account][configIndex];
+        require(config.enabled, "unenabled policy");
 
-        bytes32[] memory identityHashs = new bytes32[](
-            permissions.guardians.length
-        );
+        bytes32[] memory identityHashs = new bytes32[](permissions.length);
         walletRecoveryNonce[account]++;
 
         bytes32 digest = keccak256(
@@ -285,46 +302,65 @@ contract RecoveryModule {
             )
         );
 
-        for (uint256 i = 0; i < permissions.guardians.length - 1; i++) {
-            if (permissions.guardians[i].signer.length == 0) {
+        for (uint256 i = 0; i < permissions.length - 1; i++) {
+            if (permissions[i].guardian.signer.length == 0) {
                 require(
                     SignatureChecker.isValidSignatureNow(
-                        permissions.guardians[i].guardianVerifier,
+                        permissions[i].guardian.guardianVerifier,
                         digest,
-                        permissions.signatures[i]
+                        permissions[i].signature
                     ),
                     "invalid signature"
                 );
             } else {
                 require(
                     IPermissionVerifier(
-                        permissions.guardians[i].guardianVerifier
+                        permissions[i].guardian.guardianVerifier
                     ).isValidPermission(
                             digest,
-                            permissions.guardians[i].signer,
-                            permissions.signatures[i]
+                            permissions[i].guardian.signer,
+                            permissions[i].signature
                         ),
                     "invalid signature"
                 );
             }
 
-            identityHashs[i] = keccak256(abi.encode(permissions.guardians[i]));
+            identityHashs[i] = keccak256(abi.encode(permissions[i].guardian));
         }
 
         uint256 cumulatedWeight = 0;
-        for (uint256 i = 0; i < identityHashs.length - 1; i++) {
-            cumulatedWeight += policy
-                .config
-                .guardianInfos[identityHashs[i]]
-                .property;
-            for (uint256 j = i + 1; j < identityHashs.length; j++) {
-                if (identityHashs[i] == identityHashs[j]) {
-                    revert("duplicated guradian");
+        if (config.policyVerifier == address(0)) {
+            for (uint256 i = 0; i < identityHashs.length - 1; i++) {
+                cumulatedWeight += config
+                    .guardianInfos[identityHashs[i]]
+                    .property;
+                for (uint256 j = i + 1; j < identityHashs.length; j++) {
+                    if (identityHashs[i] == identityHashs[j]) {
+                        revert("duplicated guradian");
+                    }
                 }
             }
+        } else {
+            uint64[] memory properties = new uint64[](identityHashs.length);
+            for (uint256 i = 0; i < identityHashs.length - 1; i++) {
+                properties[i] += config
+                    .guardianInfos[identityHashs[i]]
+                    .property;
+                for (uint256 j = i + 1; j < identityHashs.length; j++) {
+                    if (identityHashs[i] == identityHashs[j]) {
+                        revert("duplicated guradian");
+                    }
+                }
+            }
+            (bool succ, uint256 weight) = IRecoveryPolicyVerifier(
+                config.policyVerifier
+            ).verifyRecoveryPolicy(permissions, properties);
+            require(succ, "failed permissions");
+            cumulatedWeight = weight;
         }
-        for (uint i = 0; i < policy.config.thresholdConfigs.length; i++) {
-            if (cumulatedWeight > policy.config.thresholdConfigs[i].threshold) {
+
+        for (uint i = 0; i < config.thresholdConfigs.length; i++) {
+            if (cumulatedWeight > config.thresholdConfigs[i].threshold) {
                 delete recoveryEntries[account];
                 return;
             }
@@ -332,37 +368,61 @@ contract RecoveryModule {
     }
 
     /**
-     * @dev Get wallet recovery info, recovery policy config, check if an identity is a guardian, get the nonce of social recovery, and get the recovery status of the wallet
+     * @dev Get wallet recovery info, recovery config, check if an identity is a guardian, get the nonce of social recovery, and get the recovery status of the wallet
      */
     function isGuardian(
         address account,
         Identity memory guardian
     ) public view returns (bool) {
-        return (false);
-    }
+        RecoveryConfig[] storage configs = walletConfigs[account];
+        bytes32 guardianHash = keccak256(abi.encode(guardian));
+        for (uint256 i = 0; i < configs.length; i++) {
+            bool exist = configs[i].identityHashs.isExist(guardianHash);
+            if (exist) {
+                return true;
+            }
+        }
 
-    function getRecoveryPolicies(
-        address account
-    ) public view returns (RecoveryPolicyArg[] memory recoveryPolicyConfigs) {
-        recoveryPolicyConfigs = new RecoveryPolicyArg[](1);
-        return recoveryPolicyConfigs;
+        return false;
     }
 
     function getRecoveryConfigs(
-        address account,
-        address policyVerifier
-    ) public view returns (RecoveryConfigArg memory config) {}
+        address account
+    ) public view returns (RecoveryConfigArg[] memory configArgs) {
+        RecoveryConfig[] storage configs = walletConfigs[account];
+        configArgs = new RecoveryConfigArg[](configs.length);
+        for (uint256 i = 0; i < configs.length; i++) {
+            RecoveryConfigArg memory configArg;
+            bytes32[] memory identityHashs = configs[i].identityHashs.list(
+                HashLinkedList.SENTINEL_HASH,
+                configs[i].identityHashs.size()
+            );
+
+            for (uint256 j = 0; j < identityHashs.length; j++) {
+                configArg.guardianInfos = new GuardianInfo[](
+                    identityHashs.length
+                );
+                configArg.guardianInfos[j] = configs[i].guardianInfos[
+                    identityHashs[j]
+                ];
+            }
+            configArg.policyVerifier = configs[i].policyVerifier;
+            configArg.thresholdConfigs = configs[i].thresholdConfigs;
+            configArgs[i] = configArg;
+        }
+    }
 
     function getRecoveryNonce(
         address account
     ) public view returns (uint256 nonce) {
-        return 0;
+        return walletRecoveryNonce[account];
     }
 
     function getRecoveryStatus(
-        address account,
-        address policyVerifier
+        address account
     ) public view returns (bool isRecovering, uint48 expiryTime) {
-        return (false, 0);
+        RecoveryEntry memory status = recoveryEntries[account];
+        isRecovering = status.executeAfter > 0 ? true : false;
+        expiryTime = uint48(status.executeAfter);
     }
 }

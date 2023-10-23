@@ -3,8 +3,8 @@ pragma solidity ^0.8.13;
 
 /**
  * @dev Structure representing an identity with its signature/proof verification logic.
- * Represents an EOA/CA account when signer is empty,use `guardianVerifier`as the actual signer for signature verification.
- * OtherWise execute IGuardianPermissionVerifier(guardianVerifier).isValidPermissions(signer,hash,signature).
+ * Represents an EOA/CA account when signer is empty,use `verifier`as the actual signer for signature verification.
+ * OtherWise execute IGuardianPermissionVerifier(verifier).isValidPermission(signer,hash,signature).
  */
 struct Identity {
     address guardianVerifier;
@@ -17,14 +17,14 @@ struct Identity {
  */
 struct GuardianInfo {
     Identity guardian;
-    uint32 property; //eg.,Weight,Percentage,Role with weight,etc.
+    uint64 property; //eg.,Weight,Percentage,Role with weight,etc.
 }
 
 /**
  * @dev Structure representing a threshold configuration
  */
 struct ThresholdConfig {
-    uint32 threshold; // Threshold value
+    uint64 threshold; // Threshold value
     uint48 lockPeriod; // Lock period for the threshold
 }
 
@@ -33,16 +33,9 @@ struct ThresholdConfig {
  * A RecoveryConfig can have multiple threshold configurations for different threshold values and their lock periods
  */
 struct RecoveryConfigArg {
+    address policyVerifier;
     GuardianInfo[] guardianInfos;
     ThresholdConfig[] thresholdConfigs;
-}
-
-/**
- * @dev Structure representing a recovery policy with its verification logic (policy verifier contract address)
- */
-struct RecoveryPolicyArg {
-    address policyVerifier;
-    RecoveryConfigArg config;
 }
 
 /**
@@ -50,18 +43,14 @@ struct RecoveryPolicyArg {
  * A RecoveryConfig can have multiple threshold configurations for different threshold values and their lock periods
  */
 struct RecoveryConfig {
+    bool enabled;
+    address policyVerifier;
     mapping(bytes32 => bytes32) identityHashs;
     mapping(bytes32 => GuardianInfo) guardianInfos;
     ThresholdConfig[] thresholdConfigs;
 }
 
-struct RecoveryPolicy {
-    bool enabled;
-    address policyVerifier;
-    RecoveryConfig config;
-}
-
-struct Permissions {
-    Identity[] guardians;
-    bytes[] signatures;
+struct Permission {
+    Identity guardian;
+    bytes signature;
 }
