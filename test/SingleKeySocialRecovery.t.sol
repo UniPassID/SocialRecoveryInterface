@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+
+import "forge-std/Test.sol";
+import "../src/RecoveryModule.sol";
+import "../src/test/SimpleAccount.sol";
+import "../src/TypesAndDecoders.sol";
+import "../src/interfaces/IPermissionVerifier.sol";
+import "../src/verifier/singleKey/SingleKeyVerifier.sol";
+
+contract SingleKeySocialRecoveryTest is Test {
+    // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 private constant _DOMAIN_SEPARATOR_TYPEHASH =
+        0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f;
+
+    bytes32 internal constant _START_RECOVERY_TYPEHASH =
+        keccak256(
+            "startRecovery(address account,bytes newOwner,uint256 nonce)"
+        );
+
+    bytes32 internal constant _CANCEL_RECOVERY_TYPEHASH =
+        keccak256("cancelRecovery(address account,uint256 nonce)");
+
+    function getChainID() internal view returns (uint256) {
+        uint256 id;
+        assembly {
+            id := chainid()
+        }
+        return id;
+    }
+
+    /// @notice             returns the domainSeparator for EIP-712 signature
+    /// @return             the bytes32 domainSeparator for EIP-712 signature
+    function domainSeparator() public view returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    _DOMAIN_SEPARATOR_TYPEHASH,
+                    keccak256(abi.encodePacked("Recovery Module")),
+                    keccak256(abi.encodePacked("0.0.1")),
+                    getChainID(),
+                    address(_recoveryModule)
+                )
+            );
+    }
+
+    RecoveryModule _recoveryModule;
+    SimpleAccount _account;
+    IPermissionVerifier _verifier;
+
+    uint256 _owner;
+    address _ownerAddr;
+
+    uint256[] _guardians;
+    address[] _guardiansAddr;
+    uint256 _guardianCount;
+    uint256 _threshold;
+    uint256 _lockPeriod;
+
+    function setUp() public {
+        _guardianCount = 4;
+        _threshold = 2;
+        _lockPeriod = 1024;
+        _recoveryModule = new RecoveryModule();
+        _verifier = new SingleKeyVerifier();
+        _owner = 0x100;
+        _ownerAddr = vm.addr(_owner);
+        vm.startPrank(_ownerAddr);
+        _account = new SimpleAccount();
+        _account.authorizeModule(address(_recoveryModule));
+        vm.stopPrank();
+
+        _guardians = new uint256[](_guardianCount);
+        _guardiansAddr = new address[](_guardianCount);
+        for (uint i = 0; i < _guardianCount; i++) {
+            _guardians[i] = uint256(keccak256(abi.encodePacked(i + 1000)));
+            _guardiansAddr[i] = vm.addr(_guardians[i]);
+        }
+
+        vm.startPrank(address(_account));
+
+        RecoveryConfigArg memory configArg;
+        configArg.thresholdConfigs = new ThresholdConfig[](2);
+        ThresholdConfig memory thresholdConfig0;
+        thresholdConfig0.threshold = uint64(_guardianCount);
+        thresholdConfig0.lockPeriod = 0;
+        configArg.thresholdConfigs[0] = thresholdConfig0;
+
+        ThresholdConfig memory thresholdConfig1;
+        thresholdConfig0.threshold = uint64(_threshold);
+        thresholdConfig0.lockPeriod = uint48(_lockPeriod);
+        configArg.thresholdConfigs[1] = thresholdConfig1;
+
+        configArg.guardianInfos = new GuardianInfo[](_guardianCount);
+        for (uint i = 0; i < _guardianCount; i++) {
+            Identity memory id;
+            id.guardianVerifier = address(_verifier);
+            id.signer = abi.encodePacked(_guardiansAddr[i]);
+            configArg.guardianInfos[i].guardian = id;
+            configArg.guardianInfos[i].property = 1;
+        }
+
+        _recoveryModule.addConfig(configArg);
+        vm.stopPrank();
+    }
+
+    function testInstantRecovery() public {
+        _owner = 0x101;
+        _ownerAddr = vm.addr(_owner);
+
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                domainSeparator(),
+                keccak256(
+                    abi.encode(
+                        _START_RECOVERY_TYPEHASH,
+                        address(_account),
+                        abi.encodePacked(_ownerAddr),
+                        _recoveryModule.walletRecoveryNonce(address(_account)) +
+                            1
+                    )
+                )
+            )
+        );
+
+        console2.logBytes32(digest);
+
+        Permission[] memory permissions = new Permission[](_guardianCount);
+        for (uint i = 0; i < _guardianCount; i++) {
+            Identity memory id;
+            id.guardianVerifier = address(_verifier);
+            id.signer = abi.encodePacked(_guardiansAddr[i]);
+            permissions[i].guardian = id;
+
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(_guardians[i], digest);
+            permissions[i].signature = abi.encodePacked(r, s, v);
+        }
+
+        _recoveryModule.startRecovery(
+            address(_account),
+            0,
+            abi.encodePacked(_ownerAddr),
+            permissions
+        );
+    }
+}

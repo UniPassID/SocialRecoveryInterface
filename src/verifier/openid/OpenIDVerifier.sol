@@ -4,10 +4,12 @@ pragma solidity ^0.8.12;
 import "../../libraries/LibRsa.sol";
 import "../../libraries/LibBytes.sol";
 import "../../libraries/LibBase64.sol";
+import "../../interfaces/IPermissionVerifier.sol";
+
 import "./AudManager.sol";
 import "./OpenIDKeyManager.sol";
 
-contract OpenIDVerifier is OpenIDKeyManager, AudManager {
+contract OpenIDVerifier is OpenIDKeyManager, AudManager, IPermissionVerifier {
     using LibBytes for bytes;
 
     enum OpenIDParamsIndex {

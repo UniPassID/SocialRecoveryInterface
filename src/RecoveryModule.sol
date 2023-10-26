@@ -52,7 +52,7 @@ contract RecoveryModule {
     bytes32 internal constant _CANCEL_RECOVERY_TYPEHASH =
         keccak256("cancelRecovery(address account,uint256 nonce)");
 
-    mapping(address => uint256) walletRecoveryNonce;
+    mapping(address => uint256) public walletRecoveryNonce;
     mapping(address => RecoveryConfig[]) internal walletConfigs;
 
     mapping(address => mapping(bytes32 => uint256)) approvedRecords;
@@ -167,7 +167,7 @@ contract RecoveryModule {
         bytes32 digest = keccak256(
             abi.encodePacked(
                 "\x19\x01",
-                _DOMAIN_SEPARATOR_TYPEHASH,
+                domainSeparator(),
                 keccak256(
                     abi.encode(
                         _START_RECOVERY_TYPEHASH,
@@ -238,7 +238,7 @@ contract RecoveryModule {
 
         uint48 lockPeriod = type(uint48).max;
         for (uint i = 0; i < config.thresholdConfigs.length; i++) {
-            if (cumulatedWeight > config.thresholdConfigs[i].threshold) {
+            if (cumulatedWeight >= config.thresholdConfigs[i].threshold) {
                 lockPeriod = config.thresholdConfigs[i].lockPeriod;
                 break;
             }
@@ -291,7 +291,7 @@ contract RecoveryModule {
         bytes32 digest = keccak256(
             abi.encodePacked(
                 "\x19\x01",
-                _DOMAIN_SEPARATOR_TYPEHASH,
+                domainSeparator(),
                 keccak256(
                     abi.encode(
                         _CANCEL_RECOVERY_TYPEHASH,

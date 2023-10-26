@@ -2,9 +2,11 @@
 pragma solidity ^0.8.13;
 
 import "../../libraries/LibBase64.sol";
+import "../../interfaces/IPermissionVerifier.sol";
+
 import "./FCL_ecdsa.sol";
 
-contract PasskeyVerifier {
+contract PasskeyVerifier is IPermissionVerifier {
     function isValidSigner(bytes memory signer) public pure returns (bool) {
         if (signer.length == 64) {
             return true;
