@@ -72,8 +72,9 @@ contract SingleKeyVerifier is IPermissionVerifier {
      * @dev Return supported signer key information, format, signature format, hash algorithm, etc.
      * MAY TODO:using ERC-3668: ccip-read
      */
-    function getGuardianVerifierInfo() external pure returns (bytes memory) {
-        bytes memory a = new bytes(0);
-        return a;
-    }
+    function getGuardianVerifierInfo()
+        external
+        pure
+        returns (bytes memory metadata)
+    {}
 }
