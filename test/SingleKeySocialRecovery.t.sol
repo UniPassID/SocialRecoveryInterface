@@ -2,6 +2,7 @@
 pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
+import "forge-std/console2.sol";
 import "../src/RecoveryModule.sol";
 import "../src/test/SimpleAccount.sol";
 import "../src/TypesAndDecoders.sol";
@@ -102,6 +103,9 @@ contract SingleKeySocialRecoveryTest is Test {
 
         _recoveryModule.addConfig(configArg);
         vm.stopPrank();
+
+        console2.log("domainSeparator: ");
+        console2.logBytes32(domainSeparator());
     }
 
     function testInstantRecovery() public {
