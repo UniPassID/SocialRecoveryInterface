@@ -94,8 +94,8 @@ contract OpenIDSocialRecoveryTest is Test {
         configArg.thresholdConfigs.push(thresholdConfig0);
 
         ThresholdConfig memory thresholdConfig1;
-        thresholdConfig0.threshold = uint64(_threshold);
-        thresholdConfig0.lockPeriod = uint48(_lockPeriod);
+        thresholdConfig1.threshold = uint64(_threshold);
+        thresholdConfig1.lockPeriod = uint48(_lockPeriod);
         configArg.thresholdConfigs.push(thresholdConfig1);
 
         {
@@ -154,7 +154,7 @@ contract OpenIDSocialRecoveryTest is Test {
         console2.logBytes32(domainSeparator());
     }
 
-    function testInstantRecovery() public {
+    function testOpenIDInstantRecovery() public {
         _owner = 0x101;
         _ownerAddr = vm.addr(_owner);
 
@@ -180,7 +180,10 @@ contract OpenIDSocialRecoveryTest is Test {
         Permission[] memory permissions = new Permission[](_guardianCount);
         {
             Identity memory id;
-            id.guardianVerifier = address(_verifier);
+            id.guardianVerifier = configArg
+                .guardianInfos[0]
+                .guardian
+                .guardianVerifier;
             id.signer = configArg.guardianInfos[0].guardian.signer;
             permissions[0].guardian = id;
             permissions[0]
@@ -188,7 +191,10 @@ contract OpenIDSocialRecoveryTest is Test {
         }
         {
             Identity memory id;
-            id.guardianVerifier = address(_verifier);
+            id.guardianVerifier = configArg
+                .guardianInfos[1]
+                .guardian
+                .guardianVerifier;
             id.signer = configArg.guardianInfos[1].guardian.signer;
             permissions[1].guardian = id;
             permissions[1]
@@ -196,14 +202,17 @@ contract OpenIDSocialRecoveryTest is Test {
         }
         {
             Identity memory id;
-            id.guardianVerifier = address(_verifier);
-            id.signer = configArg.guardianInfos[1].guardian.signer;
+            id.guardianVerifier = configArg
+                .guardianInfos[2]
+                .guardian
+                .guardianVerifier;
+            id.signer = configArg.guardianInfos[2].guardian.signer;
             permissions[2].guardian = id;
             permissions[2]
                 .signature = hex"0000003b00000046000000160000001e0000004f00000059000000620000006a0000007500000007000000180000002c7b22616c67223a225253323536222c226b6964223a22746573745f6b6964222c22747970223a224a5754227d000000b97b22696174223a313639393538323136332c22657870223a313639393636383536332c226e6266223a313639393538323136332c22697373223a22746573745f697373756572222c22737562223a22746573745f7573657233222c22617564223a22746573745f617564222c226e6f6e6365223a22307835343038646330666161616134643633323530616663353130633832303831306261323963336335323965623031373533613033663034353964666462666430227d00000100afacfc9b81690c493c09e38ce23f61710021fc2ddb74fee02bf88bd8aa0b8082178e989aaac80473d60d0048bd527f69619f54ef9a33626024de9dfc6d1595695eb07c9d209e7bf40f832fad09d2c043686eeec550691f9b36d255317944753e88b53703b3ba807520b13adee80df559f943660081932d69164576f66c0aa834b8a91403cb4c9fa2618b52994cde33f7f4306175b0f9e2af6e480934f245df03fdf8fede569b3ce463fe4245d2147d52edae015d90ed39549e8d1a55caf3d4a3871eca5539992652c4a098f706154cdd3169c34bbec292d6d7b22a81c03d31be043bbf88c486ecc47d1b24e3aa752da3190fced722a0134f2ad97b524f457cd9";
         }
 
-        vm.warp(1699582162);
+        vm.warp(1699582180);
         _recoveryModule.startRecovery(
             address(_account),
             0,

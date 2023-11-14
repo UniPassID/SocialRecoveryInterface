@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
+import "forge-std/console2.sol";
+
 import "./TypesAndDecoders.sol";
 import "./interfaces/IPermissionVerifier.sol";
 import "./interfaces/IAccount.sol";
@@ -140,7 +142,7 @@ contract RecoveryModule {
         }
         for (uint i = 0; i < configArg.guardianInfos.length; i++) {
             bytes32 identityHash = keccak256(
-                abi.encode(configArg.guardianInfos[i])
+                abi.encode(configArg.guardianInfos[i].guardian)
             );
             config.enabled = true;
             config.identityHashs.add(identityHash);
@@ -179,7 +181,7 @@ contract RecoveryModule {
             )
         );
 
-        for (uint256 i = 0; i < permissions.length - 1; i++) {
+        for (uint256 i = 0; i < permissions.length; i++) {
             if (permissions[i].guardian.signer.length == 0) {
                 require(
                     SignatureChecker.isValidSignatureNow(
@@ -207,7 +209,7 @@ contract RecoveryModule {
 
         uint256 cumulatedWeight = 0;
         if (config.policyVerifier == address(0)) {
-            for (uint256 i = 0; i < identityHashs.length - 1; i++) {
+            for (uint256 i = 0; i < identityHashs.length; i++) {
                 cumulatedWeight += config
                     .guardianInfos[identityHashs[i]]
                     .property;
@@ -233,7 +235,7 @@ contract RecoveryModule {
                 config.policyVerifier
             ).verifyRecoveryPolicy(permissions, properties);
             require(succ, "failed permissions");
-            cumulatedWeight = weight;
+            cumulatedWeight += weight;
         }
 
         uint48 lockPeriod = type(uint48).max;
@@ -302,7 +304,7 @@ contract RecoveryModule {
             )
         );
 
-        for (uint256 i = 0; i < permissions.length - 1; i++) {
+        for (uint256 i = 0; i < permissions.length; i++) {
             if (permissions[i].guardian.signer.length == 0) {
                 require(
                     SignatureChecker.isValidSignatureNow(
@@ -330,7 +332,7 @@ contract RecoveryModule {
 
         uint256 cumulatedWeight = 0;
         if (config.policyVerifier == address(0)) {
-            for (uint256 i = 0; i < identityHashs.length - 1; i++) {
+            for (uint256 i = 0; i < identityHashs.length; i++) {
                 cumulatedWeight += config
                     .guardianInfos[identityHashs[i]]
                     .property;

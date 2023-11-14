@@ -4,11 +4,12 @@ pragma solidity ^0.8.0;
 import "../../libraries/LibRsa.sol";
 import "../../libraries/LibBytes.sol";
 import "../../libraries/LibBase64.sol";
+import "../../interfaces/IPermissionVerifier.sol";
 import "./DkimKeys.sol";
 
 import "@openzeppelin/contracts/utils/Address.sol";
 
-contract EmailVerifier is DkimKeys {
+contract EmailVerifier is DkimKeys, IPermissionVerifier {
     using LibBytes for bytes;
     using Address for address;
 
@@ -20,7 +21,6 @@ contract EmailVerifier is DkimKeys {
     bytes1 public constant DotSignBytes1 = 0x2e;
 
     enum DkimParamsIndex {
-        emailType,
         subjectIndex,
         subjectRightIndex,
         fromIndex,
@@ -32,7 +32,7 @@ contract EmailVerifier is DkimKeys {
         sdidIndex,
         sdidRightIndex
     }
-    uint256 constant DkimParamsIndexNum = 11;
+    uint256 constant DkimParamsIndexNum = 10;
 
     uint256 private constant VERIFY_BY_ORI_EMAIL = 0;
     uint256 private constant VERIFY_BY_ZK = 1;
@@ -135,7 +135,6 @@ contract EmailVerifier is DkimKeys {
     }
 
     function _getEmailFrom(
-        bytes32 _pepper,
         uint256 _startIndex,
         bytes calldata _data,
         bytes calldata _emailHeader
@@ -146,19 +145,14 @@ contract EmailVerifier is DkimKeys {
             _emailHeader
         );
 
-        emailHash = sha256(
-            abi.encodePacked(
-                _emailHeader[fromLeftIndex:fromRightIndex + 1],
-                _pepper
-            )
-        );
+        emailHash = sha256(_emailHeader[fromLeftIndex:fromRightIndex + 1]);
     }
 
     function _getDkimInfo(
         bytes calldata _data,
         uint256 _startIndex,
         bytes calldata _emailHeader
-    ) internal pure returns (bytes32 selector, bytes32 sdid) {
+    ) internal pure returns (bytes calldata selector, bytes calldata sdid) {
         uint32 dkimHeaderIndex;
         (dkimHeaderIndex, ) = _data.cReadUint32(
             _startIndex + uint256(DkimParamsIndex.dkimHeaderIndex) * 4
@@ -184,7 +178,7 @@ contract EmailVerifier is DkimKeys {
                     bytes32("; s="),
                 "DSE"
             );
-            selector = bytes32(_emailHeader[selectorIndex:selectorRightIndex]);
+            selector = _emailHeader[selectorIndex:selectorRightIndex];
         }
 
         {
@@ -202,10 +196,7 @@ contract EmailVerifier is DkimKeys {
                 _emailHeader.mcReadBytesN(sdidIndex - 4, 4) == bytes32("; d="),
                 "DDE"
             );
-            sdid = _emailHeader.mcReadBytesN(
-                sdidIndex,
-                sdidRightIndex - sdidIndex
-            );
+            sdid = _emailHeader[sdidIndex:sdidRightIndex];
         }
     }
 
@@ -215,11 +206,13 @@ contract EmailVerifier is DkimKeys {
         bytes calldata _emailHeader,
         bytes calldata _dkimSig
     ) internal view returns (bool ret) {
-        bytes32 selector;
-        bytes32 sdid;
+        bytes calldata selector;
+        bytes calldata sdid;
         (selector, sdid) = _getDkimInfo(_data, _startIndex, _emailHeader);
 
-        bytes memory n = getDKIMKey(abi.encodePacked(selector, sdid));
+        bytes memory n = getDKIMKey(
+            keccak256(abi.encodePacked(selector, sdid))
+        );
         require(n.length > 0, "zero");
         ret = LibRsa.rsapkcs1Verify(
             sha256(_emailHeader),
@@ -233,7 +226,7 @@ contract EmailVerifier is DkimKeys {
         uint256 _startIndex,
         bytes calldata _data
     )
-        external
+        public
         view
         returns (
             bool ret,
@@ -244,13 +237,13 @@ contract EmailVerifier is DkimKeys {
     {
         uint8 emailVerifyType = _data.mcReadUint8(_startIndex);
         ++_startIndex;
-
         bytes calldata emailHeader;
         bytes calldata dkimSig;
         {
             endIndex = DkimParamsIndexNum * 4 + _startIndex;
             uint32 len;
             (len, endIndex) = _data.cReadUint32(endIndex);
+
             emailHeader = _data[endIndex:endIndex + len];
             endIndex += len;
             (len, endIndex) = _data.cReadUint32(endIndex);
@@ -261,10 +254,9 @@ contract EmailVerifier is DkimKeys {
         {
             subject = _getSubject(_startIndex, _data, emailHeader);
         }
+
         if (emailVerifyType == VERIFY_BY_ORI_EMAIL) {
-            bytes32 pepper = _data.mcReadBytes32(endIndex);
-            endIndex += 32;
-            emailHash = _getEmailFrom(pepper, _startIndex, _data, emailHeader);
+            emailHash = _getEmailFrom(_startIndex, _data, emailHeader);
             ret = _verifyDkimSignature(
                 _startIndex,
                 _data,
@@ -375,4 +367,84 @@ contract EmailVerifier is DkimKeys {
             ret = bytes.concat(ret, _subjectHeader[startIndex:endIndex]);
         }
     }
+
+    function isValidSigner(bytes memory signer) public pure returns (bool) {
+        if (signer.length == 32) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @dev Check if the signer key format is correct
+     */
+    function isValidSigners(
+        bytes[] memory signers
+    ) external pure returns (bool) {
+        for (uint256 i = 0; i < signers.length; i++) {
+            bool succ = isValidSigner(signers[i]);
+            if (!succ) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * @dev Validate signature
+     */
+    function isValidPermission(
+        bytes32 hash,
+        bytes calldata signer,
+        bytes calldata signature
+    ) public view returns (bool) {
+        (bool succ, bytes32 emailHash, bytes memory subject, ) = dkimVerify(
+            0,
+            signature
+        );
+        require(succ, "INVALID_TOKEN");
+        require(
+            keccak256((LibBytes.toHex(uint256(hash), 32))) ==
+                keccak256(subject),
+            "INVALID_NONCE_HASH"
+        );
+
+        require(
+            emailHash == LibBytes.mcReadBytes32(signer, 0),
+            "INVALID_SIGNER"
+        );
+
+        return true;
+    }
+
+    /**
+     * @dev Validate signatures
+     */
+    function isValidPermissions(
+        bytes32 hash,
+        bytes[] calldata signers,
+        bytes[] calldata signatures
+    ) public view returns (bool) {
+        require(signers.length == signatures.length, "invalid args");
+
+        for (uint256 i = 0; i < signers.length; i++) {
+            bool succ = isValidPermission(hash, signers[i], signatures[i]);
+            if (!succ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @dev Return supported signer key information, format, signature format, hash algorithm, etc.
+     * MAY TODO:using ERC-3668: ccip-read
+     */
+    function getGuardianVerifierInfo()
+        external
+        view
+        returns (bytes memory metadata)
+    {}
 }
