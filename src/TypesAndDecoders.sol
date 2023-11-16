@@ -38,6 +38,17 @@ struct RecoveryConfigArg {
     ThresholdConfig[] thresholdConfigs;
 }
 
+enum UpdateType {
+    Replace,
+    Append
+}
+
+struct PendingConfig {
+    UpdateType updateType;
+    uint256 pendingUntil;
+    bytes32 configsHash;
+}
+
 /**
  * @dev Structure representing a recovery configuration
  * A RecoveryConfig can have multiple threshold configurations for different threshold values and their lock periods

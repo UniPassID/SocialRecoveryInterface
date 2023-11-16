@@ -69,7 +69,7 @@ contract PasskeyVerifier is IPermissionVerifier {
         bytes32 hash,
         bytes calldata signer,
         bytes calldata signature
-    ) public returns (bool) {
+    ) public view returns (bool) {
         bytes32 r;
         bytes32 s;
         bytes32 message = getMessage(hash, signature);
@@ -108,7 +108,7 @@ contract PasskeyVerifier is IPermissionVerifier {
         bytes32 hash,
         bytes[] calldata signers,
         bytes[] calldata signatures
-    ) public returns (bool) {
+    ) public view returns (bool) {
         require(signers.length == signatures.length, "invalid args");
 
         for (uint256 i = 0; i < signers.length; i++) {

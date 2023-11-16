@@ -101,7 +101,13 @@ contract SingleKeySocialRecoveryTest is Test {
             configArg.guardianInfos[i].property = 1;
         }
 
-        _recoveryModule.addConfig(configArg);
+        RecoveryConfigArg[] memory configArgs = new RecoveryConfigArg[](1);
+        configArgs[0] = configArg;
+        bytes32 configsHash = keccak256(abi.encode(configArgs));
+        _recoveryModule.addConfigs(configsHash);
+
+        vm.warp(block.timestamp + 3 days);
+        _recoveryModule.executeConfigsUpdate(address(_account), configArgs);
         vm.stopPrank();
 
         console2.log("domainSeparator: ");

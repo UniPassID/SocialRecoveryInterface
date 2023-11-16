@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import "forge-std/console2.sol";
-
 import "./TypesAndDecoders.sol";
 import "./interfaces/IPermissionVerifier.sol";
 import "./interfaces/IAccount.sol";
@@ -59,6 +57,7 @@ contract RecoveryModule {
 
     mapping(address => mapping(bytes32 => uint256)) approvedRecords;
     mapping(address => RecoveryEntry) recoveryEntries;
+    mapping(address => PendingConfig) pendingConfigs;
 
     modifier authorized(address _wallet) {
         require(
@@ -104,30 +103,43 @@ contract RecoveryModule {
             );
     }
 
-    function updateConfigs(
-        RecoveryConfigArg[] memory configArgs
-    ) public authorized(msg.sender) NotInRecovering(msg.sender) {
-        address account = msg.sender;
-        delete walletConfigs[account];
-        for (uint i = 0; i > configArgs.length; i++) {
-            _addConfig(account, configArgs[i]);
-        }
+    function replaceConfigs(
+        bytes32 configsHash
+    ) external authorized(msg.sender) NotInRecovering(msg.sender) {
+        pendingConfigs[msg.sender] = PendingConfig({
+            updateType: UpdateType.Replace,
+            pendingUntil: block.timestamp + 2 days,
+            configsHash: configsHash
+        });
     }
 
     function addConfigs(
-        RecoveryConfigArg[] memory configArgs
-    ) public authorized(msg.sender) NotInRecovering(msg.sender) {
-        address account = msg.sender;
-        for (uint i = 0; i > configArgs.length; i++) {
-            _addConfig(account, configArgs[i]);
-        }
+        bytes32 configsHash
+    ) external authorized(msg.sender) NotInRecovering(msg.sender) {
+        pendingConfigs[msg.sender] = PendingConfig({
+            updateType: UpdateType.Append,
+            pendingUntil: block.timestamp + 2 days,
+            configsHash: configsHash
+        });
     }
 
-    function addConfig(
-        RecoveryConfigArg memory configArg
-    ) external authorized(msg.sender) NotInRecovering(msg.sender) {
-        address account = msg.sender;
-        _addConfig(account, configArg);
+    function executeConfigsUpdate(
+        address account,
+        RecoveryConfigArg[] memory configArgs
+    ) external authorized(account) NotInRecovering(account) {
+        PendingConfig memory pending = pendingConfigs[account];
+        require(block.timestamp > pending.pendingUntil, "Invalid time");
+        require(
+            keccak256(abi.encode(configArgs)) == pending.configsHash,
+            "hash unmatched"
+        );
+
+        if (pending.updateType == UpdateType.Replace) {
+            delete walletConfigs[account];
+        }
+        for (uint i = 0; i < configArgs.length; i++) {
+            _addConfig(account, configArgs[i]);
+        }
     }
 
     function _addConfig(
@@ -150,37 +162,16 @@ contract RecoveryModule {
         }
     }
 
-    // Generate EIP-712 message hash,
-    // Iterate over signatures for verification,
-    // Verify recovery policy,
-    // Store temporary state or recover immediately based on the result.
-    function startRecovery(
+    function verifyPermissions(
         address account,
         uint256 configIndex,
-        bytes memory newOwners,
+        bytes32 digest,
         Permission[] memory permissions
-    ) external NotInRecovering(account) {
+    ) public returns (uint48) {
         RecoveryConfig storage config = walletConfigs[account][configIndex];
         require(config.enabled, "unenabled policy");
 
         bytes32[] memory identityHashs = new bytes32[](permissions.length);
-        walletRecoveryNonce[account]++;
-
-        bytes32 digest = keccak256(
-            abi.encodePacked(
-                "\x19\x01",
-                domainSeparator(),
-                keccak256(
-                    abi.encode(
-                        _START_RECOVERY_TYPEHASH,
-                        account,
-                        newOwners,
-                        walletRecoveryNonce[account]
-                    )
-                )
-            )
-        );
-
         for (uint256 i = 0; i < permissions.length; i++) {
             if (permissions[i].guardian.signer.length == 0) {
                 require(
@@ -247,9 +238,48 @@ contract RecoveryModule {
         }
 
         require(lockPeriod < type(uint48).max, "threshold unmatched");
+        return lockPeriod;
+    }
 
+    // Generate EIP-712 message hash,
+    // Iterate over signatures for verification,
+    // Verify recovery policy,
+    // Store temporary state or recover immediately based on the result.
+    function startRecovery(
+        address account,
+        uint256 configIndex,
+        bytes memory newOwners,
+        Permission[] memory permissions
+    ) external NotInRecovering(account) {
+        walletRecoveryNonce[account]++;
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                domainSeparator(),
+                keccak256(
+                    abi.encode(
+                        _START_RECOVERY_TYPEHASH,
+                        account,
+                        newOwners,
+                        walletRecoveryNonce[account]
+                    )
+                )
+            )
+        );
+
+        uint48 lockPeriod = verifyPermissions(
+            account,
+            configIndex,
+            digest,
+            permissions
+        );
         if (lockPeriod == 0) {
             IAccount(account).resetOwner(newOwners);
+            emit RecoveryExecuted(
+                account,
+                newOwners,
+                walletRecoveryNonce[account]
+            );
         } else {
             RecoveryEntry memory entry;
             entry.newOwners = newOwners;
@@ -270,12 +300,18 @@ contract RecoveryModule {
             "locking"
         );
         IAccount(account).resetOwner(recoveryEntries[account].newOwners);
+        emit RecoveryExecuted(
+            account,
+            recoveryEntries[account].newOwners,
+            recoveryEntries[account].nonce
+        );
         delete recoveryEntries[account];
     }
 
     function cancelRecovery(
         address account
     ) external authorized(msg.sender) InRecovering(account) {
+        emit RecoveryCanceled(account, recoveryEntries[account].nonce);
         delete recoveryEntries[account];
     }
 
@@ -284,12 +320,7 @@ contract RecoveryModule {
         uint256 configIndex,
         Permission[] memory permissions
     ) external InRecovering(account) {
-        RecoveryConfig storage config = walletConfigs[account][configIndex];
-        require(config.enabled, "unenabled policy");
-
-        bytes32[] memory identityHashs = new bytes32[](permissions.length);
         walletRecoveryNonce[account]++;
-
         bytes32 digest = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -304,69 +335,10 @@ contract RecoveryModule {
             )
         );
 
-        for (uint256 i = 0; i < permissions.length; i++) {
-            if (permissions[i].guardian.signer.length == 0) {
-                require(
-                    SignatureChecker.isValidSignatureNow(
-                        permissions[i].guardian.guardianVerifier,
-                        digest,
-                        permissions[i].signature
-                    ),
-                    "invalid signature"
-                );
-            } else {
-                require(
-                    IPermissionVerifier(
-                        permissions[i].guardian.guardianVerifier
-                    ).isValidPermission(
-                            digest,
-                            permissions[i].guardian.signer,
-                            permissions[i].signature
-                        ),
-                    "invalid signature"
-                );
-            }
+        verifyPermissions(account, configIndex, digest, permissions);
 
-            identityHashs[i] = keccak256(abi.encode(permissions[i].guardian));
-        }
-
-        uint256 cumulatedWeight = 0;
-        if (config.policyVerifier == address(0)) {
-            for (uint256 i = 0; i < identityHashs.length; i++) {
-                cumulatedWeight += config
-                    .guardianInfos[identityHashs[i]]
-                    .property;
-                for (uint256 j = i + 1; j < identityHashs.length; j++) {
-                    if (identityHashs[i] == identityHashs[j]) {
-                        revert("duplicated guradian");
-                    }
-                }
-            }
-        } else {
-            uint64[] memory properties = new uint64[](identityHashs.length);
-            for (uint256 i = 0; i < identityHashs.length - 1; i++) {
-                properties[i] += config
-                    .guardianInfos[identityHashs[i]]
-                    .property;
-                for (uint256 j = i + 1; j < identityHashs.length; j++) {
-                    if (identityHashs[i] == identityHashs[j]) {
-                        revert("duplicated guradian");
-                    }
-                }
-            }
-            (bool succ, uint256 weight) = IRecoveryPolicyVerifier(
-                config.policyVerifier
-            ).verifyRecoveryPolicy(permissions, properties);
-            require(succ, "failed permissions");
-            cumulatedWeight = weight;
-        }
-
-        for (uint i = 0; i < config.thresholdConfigs.length; i++) {
-            if (cumulatedWeight > config.thresholdConfigs[i].threshold) {
-                delete recoveryEntries[account];
-                return;
-            }
-        }
+        emit RecoveryCanceled(account, recoveryEntries[account].nonce);
+        delete recoveryEntries[account];
     }
 
     /**
