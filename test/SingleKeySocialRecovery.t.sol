@@ -9,6 +9,8 @@ import "../src/TypesAndDecoders.sol";
 import "../src/interfaces/IPermissionVerifier.sol";
 import "../src/verifier/singleKey/SingleKeyVerifier.sol";
 
+import "@safe-global/safe-contracts/contracts/Safe.sol";
+
 contract SingleKeySocialRecoveryTest is Test {
     // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 private constant _DOMAIN_SEPARATOR_TYPEHASH =
@@ -52,6 +54,9 @@ contract SingleKeySocialRecoveryTest is Test {
     uint256 _owner;
     address _ownerAddr;
 
+    uint256 _newOwner;
+    address _newOwnerAddr;
+
     uint256[] _guardians;
     address[] _guardiansAddr;
     uint256 _guardianCount;
@@ -68,7 +73,6 @@ contract SingleKeySocialRecoveryTest is Test {
         _ownerAddr = vm.addr(_owner);
         vm.startPrank(_ownerAddr);
         _account = new SimpleAccount();
-        _account.authorizeModule(address(_recoveryModule));
         vm.stopPrank();
 
         _guardians = new uint256[](_guardianCount);
@@ -79,6 +83,7 @@ contract SingleKeySocialRecoveryTest is Test {
         }
 
         vm.startPrank(address(_account));
+        _account.enableModule(address(_recoveryModule));
 
         RecoveryConfigArg memory configArg;
         configArg.thresholdConfigs = new ThresholdConfig[](2);
@@ -114,9 +119,13 @@ contract SingleKeySocialRecoveryTest is Test {
         console2.logBytes32(domainSeparator());
     }
 
-    function testInstantRecovery() public {
-        _owner = 0x101;
-        _ownerAddr = vm.addr(_owner);
+    function testSingleKeyInstantRecovery() public {
+        _newOwner = 0x101;
+        _newOwnerAddr = vm.addr(_newOwner);
+        bytes memory data = abi.encodeCall(
+            OwnerManager.swapOwner,
+            (address(0x1), _ownerAddr, _newOwnerAddr)
+        );
 
         bytes32 digest = keccak256(
             abi.encodePacked(
@@ -126,7 +135,7 @@ contract SingleKeySocialRecoveryTest is Test {
                     abi.encode(
                         _START_RECOVERY_TYPEHASH,
                         address(_account),
-                        abi.encodePacked(_ownerAddr),
+                        data,
                         _recoveryModule.walletRecoveryNonce(address(_account)) +
                             1
                     )
@@ -147,11 +156,6 @@ contract SingleKeySocialRecoveryTest is Test {
             permissions[i].signature = abi.encodePacked(r, s, v);
         }
 
-        _recoveryModule.startRecovery(
-            address(_account),
-            0,
-            abi.encodePacked(_ownerAddr),
-            permissions
-        );
+        _recoveryModule.startRecovery(address(_account), 0, data, permissions);
     }
 }

@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 import "./TypesAndDecoders.sol";
 import "./interfaces/IPermissionVerifier.sol";
-import "./interfaces/IAccount.sol";
+import "./interfaces/ISafe.sol";
 import "./interfaces/IRecoveryPolicyVerifier.sol";
 import "./libraries/HashLinkedList.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
@@ -12,7 +12,7 @@ contract RecoveryModule {
     using HashLinkedList for mapping(bytes32 => bytes32);
 
     struct RecoveryEntry {
-        bytes newOwners;
+        bytes data;
         uint256 executeAfter;
         uint256 nonce;
     }
@@ -59,14 +59,6 @@ contract RecoveryModule {
     mapping(address => RecoveryEntry) recoveryEntries;
     mapping(address => PendingConfig) pendingConfigs;
 
-    modifier authorized(address _wallet) {
-        require(
-            IAccount(_wallet).isAuthorizedModule(address(this)),
-            "unauthorized"
-        );
-        _;
-    }
-
     modifier InRecovering(address account) {
         require(
             recoveryEntries[account].executeAfter > 0,
@@ -105,7 +97,7 @@ contract RecoveryModule {
 
     function replaceConfigs(
         bytes32 configsHash
-    ) external authorized(msg.sender) NotInRecovering(msg.sender) {
+    ) external NotInRecovering(msg.sender) {
         pendingConfigs[msg.sender] = PendingConfig({
             updateType: UpdateType.Replace,
             pendingUntil: block.timestamp + 2 days,
@@ -115,7 +107,7 @@ contract RecoveryModule {
 
     function addConfigs(
         bytes32 configsHash
-    ) external authorized(msg.sender) NotInRecovering(msg.sender) {
+    ) external NotInRecovering(msg.sender) {
         pendingConfigs[msg.sender] = PendingConfig({
             updateType: UpdateType.Append,
             pendingUntil: block.timestamp + 2 days,
@@ -126,7 +118,7 @@ contract RecoveryModule {
     function executeConfigsUpdate(
         address account,
         RecoveryConfigArg[] memory configArgs
-    ) external authorized(account) NotInRecovering(account) {
+    ) external NotInRecovering(account) {
         PendingConfig memory pending = pendingConfigs[account];
         require(block.timestamp > pending.pendingUntil, "Invalid time");
         require(
@@ -248,7 +240,7 @@ contract RecoveryModule {
     function startRecovery(
         address account,
         uint256 configIndex,
-        bytes memory newOwners,
+        bytes memory data,
         Permission[] memory permissions
     ) external NotInRecovering(account) {
         walletRecoveryNonce[account]++;
@@ -260,7 +252,7 @@ contract RecoveryModule {
                     abi.encode(
                         _START_RECOVERY_TYPEHASH,
                         account,
-                        newOwners,
+                        data,
                         walletRecoveryNonce[account]
                     )
                 )
@@ -274,15 +266,11 @@ contract RecoveryModule {
             permissions
         );
         if (lockPeriod == 0) {
-            IAccount(account).resetOwner(newOwners);
-            emit RecoveryExecuted(
-                account,
-                newOwners,
-                walletRecoveryNonce[account]
-            );
+            ISafe(account).execTransactionFromModule(account, 0, data, 0);
+            emit RecoveryExecuted(account, data, walletRecoveryNonce[account]);
         } else {
             RecoveryEntry memory entry;
-            entry.newOwners = newOwners;
+            entry.data = data;
             entry.nonce = walletRecoveryNonce[account];
             entry.executeAfter = uint48(block.timestamp) + lockPeriod;
 
@@ -299,18 +287,21 @@ contract RecoveryModule {
             recoveryEntries[account].executeAfter < block.timestamp,
             "locking"
         );
-        IAccount(account).resetOwner(recoveryEntries[account].newOwners);
+        ISafe(account).execTransactionFromModule(
+            account,
+            0,
+            recoveryEntries[account].data,
+            0
+        );
         emit RecoveryExecuted(
             account,
-            recoveryEntries[account].newOwners,
+            recoveryEntries[account].data,
             recoveryEntries[account].nonce
         );
         delete recoveryEntries[account];
     }
 
-    function cancelRecovery(
-        address account
-    ) external authorized(msg.sender) InRecovering(account) {
+    function cancelRecovery(address account) external InRecovering(account) {
         emit RecoveryCanceled(account, recoveryEntries[account].nonce);
         delete recoveryEntries[account];
     }
