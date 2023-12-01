@@ -4,12 +4,13 @@ pragma solidity ^0.8.13;
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
 import "../src/RecoveryModule.sol";
-import "../src/test/SimpleAccount.sol";
+import "../src/test/TestAccount.sol";
 import "../src/TypesAndDecoders.sol";
 import "../src/interfaces/IPermissionVerifier.sol";
 import "../src/verifier/passkey/PasskeyVerifier.sol";
 
 import "@safe-global/safe-contracts/contracts/Safe.sol";
+import "@safe-global/safe-contracts/contracts/proxies/SafeProxyFactory.sol";
 
 contract PasskeySocialRecoveryTest is Test {
     // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
@@ -48,7 +49,9 @@ contract PasskeySocialRecoveryTest is Test {
     }
 
     RecoveryModule _recoveryModule;
-    SimpleAccount _account;
+    SafeProxyFactory _factory;
+    TestAccount _accountImpl;
+    ISafe _account;
     PasskeyVerifier _verifier;
 
     uint256 _owner;
@@ -67,14 +70,39 @@ contract PasskeySocialRecoveryTest is Test {
         _threshold = 2;
         _lockPeriod = 1024;
         _recoveryModule = new RecoveryModule();
+        _factory = new SafeProxyFactory();
+        _accountImpl = new TestAccount();
         _verifier = new PasskeyVerifier();
 
         _owner = 0x100;
         _ownerAddr = vm.addr(_owner);
 
-        vm.startPrank(_ownerAddr);
-        _account = new SimpleAccount();
-        vm.stopPrank();
+        address[] memory owners = new address[](1);
+        owners[0] = _ownerAddr;
+
+        bytes memory initializer = abi.encodeCall(
+            Safe.setup,
+            (
+                owners,
+                1,
+                address(0),
+                hex"",
+                address(0),
+                address(0),
+                0,
+                payable(address(0))
+            )
+        );
+
+        _account = ISafe(
+            address(
+                _factory.createProxyWithNonce(
+                    address(_accountImpl),
+                    initializer,
+                    0
+                )
+            )
+        );
 
         vm.startPrank(address(_account));
         _account.enableModule(address(_recoveryModule));
@@ -95,10 +123,10 @@ contract PasskeySocialRecoveryTest is Test {
             id.guardianVerifier = address(_verifier);
             id.signer = abi.encodePacked(
                 uint256(
-                    0x17da6df3f5c2caee96b41e7bfd2aac174a3a1aae72d782cfe865df8c906a6b9f
+                    0xe15686f67d66539c05f8421a546072575a5a640c3080d7a4afd611676b25400e
                 ),
                 uint256(
-                    0x141ef6bdfd992485fefbf717b02c1056adfbaf0899bdc7de983792be1a3a2307
+                    0x79596a6fef33c07461a944fa8a199665b52810557aaa1a99be4e85b9c8c95562
                 )
             );
             guardian.guardian = id;
@@ -111,10 +139,10 @@ contract PasskeySocialRecoveryTest is Test {
             id.guardianVerifier = address(_verifier);
             id.signer = abi.encodePacked(
                 uint256(
-                    0x682bac82404a56771b9e98bd2d7c8588b79c0e9e6561cf4183e00e46d3f33f34
+                    0xf2b0a2eb4a88cf7743460dda473a5a3e08c5c6db63f3ebd82c1c4a6bd6761f91
                 ),
                 uint256(
-                    0x4af574a0e75912bf71f89362fd2859f77ce51cb202eae146c36469f271f446ae
+                    0xa490c09076f43dc7fc91cab46568ef9f660ec9f684fb64343bb36a91e82c4693
                 )
             );
             guardian.guardian = id;
@@ -127,10 +155,10 @@ contract PasskeySocialRecoveryTest is Test {
             id.guardianVerifier = address(_verifier);
             id.signer = abi.encodePacked(
                 uint256(
-                    0x01ecee6992c9027b52883a91d2122fc95450e1611c55a71aee7f7abb1afccb89
+                    0x34160c417cef5ef9a1c3b7950fe1bb78ca4ffbb727cd4726df4a732557fee5e9
                 ),
                 uint256(
-                    0xa44f219c8b933e0beece8cbb068f5c6a003326df81c0ecbb7f736a3a1add030c
+                    0x62c94c2d5357bfb3ebff9db5541d17a0e94d757d6581455fd73e8c624dc74f77
                 )
             );
             guardian.guardian = id;
@@ -185,7 +213,7 @@ contract PasskeySocialRecoveryTest is Test {
             id.signer = configArg.guardianInfos[0].guardian.signer;
             permissions[0].guardian = id;
             permissions[0]
-                .signature = hex"e48098479197df113edf144d365cf254d7c4b0ed78b4561cbd0e3fad8e6808a5422bcab90f93a5460a92ced0ed69730bef27b240e5174dbace5eb8f63cb2fbec0000002582edcf1a363de8c1491dea3ed6e5f62b3decae93f836ba27c839bac52ab641f41d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000025222c226f726967696e223a2268747470733a2f2f6675747572652e746573742e636f6d227d";
+                .signature = hex"32098de0f6585491bce967d578db5fc17ec7f11e0f0a298c0c299778fce4325047d57dfe4ca9f3d4e3f7802635af17efaf781d7df09b3c06ca884655f1349c4900000025d636379c6ca019fe4b03b02a66222c9ce4526a3a3a22ed464ee63b50dda27ef61d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000026222c226f726967696e223a2268747470733a2f2f706173736b65792e746573742e636f6d227d";
         }
         {
             Identity memory id;
@@ -193,7 +221,7 @@ contract PasskeySocialRecoveryTest is Test {
             id.signer = configArg.guardianInfos[1].guardian.signer;
             permissions[1].guardian = id;
             permissions[1]
-                .signature = hex"6e7de4bdf2c8be420a03767bcc44bbcb5d9163c60a3ba1b9df7431b6e51740449c70b612d70bbc5dc5b204fde89bd487379e6abf87941b0dd679be7fb5e8a80a0000002582edcf1a363de8c1491dea3ed6e5f62b3decae93f836ba27c839bac52ab641f41d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000025222c226f726967696e223a2268747470733a2f2f6675747572652e746573742e636f6d227d";
+                .signature = hex"8bc63a15d927fafd15920576c2430e7fea3611cae0182d5d0b24e00d7abb713957fb4f839b9e827365f4265890580501294b62d4bcbca30e9e87b11fdbc04a9900000025d636379c6ca019fe4b03b02a66222c9ce4526a3a3a22ed464ee63b50dda27ef61d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000026222c226f726967696e223a2268747470733a2f2f706173736b65792e746573742e636f6d227d";
         }
         {
             Identity memory id;
@@ -201,9 +229,11 @@ contract PasskeySocialRecoveryTest is Test {
             id.signer = configArg.guardianInfos[2].guardian.signer;
             permissions[2].guardian = id;
             permissions[2]
-                .signature = hex"dc43c65b016264e08c3c3c5cfa6afb5f10a812a9e7ed04747e252db676f92eea51a0ce047c48da4d318ba079bb089f5fe8da63a2cfe4468181653a042058ec640000002582edcf1a363de8c1491dea3ed6e5f62b3decae93f836ba27c839bac52ab641f41d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000025222c226f726967696e223a2268747470733a2f2f6675747572652e746573742e636f6d227d";
+                .signature = hex"1aac4cdc48dd1473d4ce11ee5af58ae380aefc1f580d1a1883bfa36841195de695accaa2cc3d3dde8e80a0d50ceeda8c829f877159dada8011c22c9414903eb700000025d636379c6ca019fe4b03b02a66222c9ce4526a3a3a22ed464ee63b50dda27ef61d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000026222c226f726967696e223a2268747470733a2f2f706173736b65792e746573742e636f6d227d";
         }
 
         _recoveryModule.startRecovery(address(_account), 0, data, permissions);
     }
+
+    function testPasskeyTimelockRecovery() public {}
 }

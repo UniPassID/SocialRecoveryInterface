@@ -4,12 +4,13 @@ pragma solidity ^0.8.13;
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
 import "../src/RecoveryModule.sol";
-import "../src/test/SimpleAccount.sol";
+import "../src/test/TestAccount.sol";
 import "../src/TypesAndDecoders.sol";
 import "../src/interfaces/IPermissionVerifier.sol";
 import "../src/verifier/singleKey/SingleKeyVerifier.sol";
 
 import "@safe-global/safe-contracts/contracts/Safe.sol";
+import "@safe-global/safe-contracts/contracts/proxies/SafeProxyFactory.sol";
 
 contract SingleKeySocialRecoveryTest is Test {
     // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
@@ -48,7 +49,9 @@ contract SingleKeySocialRecoveryTest is Test {
     }
 
     RecoveryModule _recoveryModule;
-    SimpleAccount _account;
+    SafeProxyFactory _factory;
+    TestAccount _accountImpl;
+    ISafe _account;
     IPermissionVerifier _verifier;
 
     uint256 _owner;
@@ -68,12 +71,38 @@ contract SingleKeySocialRecoveryTest is Test {
         _threshold = 2;
         _lockPeriod = 1024;
         _recoveryModule = new RecoveryModule();
+        _factory = new SafeProxyFactory();
+        _accountImpl = new TestAccount();
         _verifier = new SingleKeyVerifier();
+
         _owner = 0x100;
         _ownerAddr = vm.addr(_owner);
-        vm.startPrank(_ownerAddr);
-        _account = new SimpleAccount();
-        vm.stopPrank();
+        address[] memory owners = new address[](1);
+        owners[0] = _ownerAddr;
+
+        bytes memory initializer = abi.encodeCall(
+            Safe.setup,
+            (
+                owners,
+                1,
+                address(0),
+                hex"",
+                address(0),
+                address(0),
+                0,
+                payable(address(0))
+            )
+        );
+
+        _account = ISafe(
+            address(
+                _factory.createProxyWithNonce(
+                    address(_accountImpl),
+                    initializer,
+                    0
+                )
+            )
+        );
 
         _guardians = new uint256[](_guardianCount);
         _guardiansAddr = new address[](_guardianCount);
@@ -158,4 +187,6 @@ contract SingleKeySocialRecoveryTest is Test {
 
         _recoveryModule.startRecovery(address(_account), 0, data, permissions);
     }
+
+    function testSingleKeyTimelockRecovery() public {}
 }

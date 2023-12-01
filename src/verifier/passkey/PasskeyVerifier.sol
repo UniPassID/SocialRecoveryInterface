@@ -7,8 +7,6 @@ import "../../interfaces/IPermissionVerifier.sol";
 
 import "./FCL_ecdsa.sol";
 
-// import "./Secp256r1.sol";
-
 contract PasskeyVerifier is IPermissionVerifier {
     using LibBytes for bytes;
 
@@ -88,13 +86,6 @@ contract PasskeyVerifier is IPermissionVerifier {
                     uint256(Qx),
                     uint256(Qy)
                 ),
-                // Secp256r1.Verify(
-                //     uint256(Qx),
-                //     uint256(Qy),
-                //     uint256(r),
-                //     uint256(s),
-                //     uint256(message)
-                // ),
                 "P256: Invalid signature"
             );
         }
