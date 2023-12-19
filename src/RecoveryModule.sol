@@ -120,7 +120,7 @@ contract RecoveryModule {
         RecoveryConfigArg[] memory configArgs
     ) external NotInRecovering(account) {
         PendingConfig memory pending = pendingConfigs[account];
-        require(block.timestamp > pending.pendingUntil, "Invalid time");
+        require(block.timestamp >= pending.pendingUntil, "Invalid time");
         require(
             keccak256(abi.encode(configArgs)) == pending.configsHash,
             "hash unmatched"
