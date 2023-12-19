@@ -123,10 +123,10 @@ contract PasskeySocialRecoveryTest is Test {
             id.guardianVerifier = address(_verifier);
             id.signer = abi.encodePacked(
                 uint256(
-                    0xe15686f67d66539c05f8421a546072575a5a640c3080d7a4afd611676b25400e
+                    0xea67eef7967ed7f362fae4ee98336aee097a999bdf7cc580db1f945b9439f17a
                 ),
                 uint256(
-                    0x79596a6fef33c07461a944fa8a199665b52810557aaa1a99be4e85b9c8c95562
+                    0x16b339cc67ac3f78aabd85db0d29b47355588921b167434e2ce5784112818a97
                 )
             );
             guardian.guardian = id;
@@ -139,10 +139,10 @@ contract PasskeySocialRecoveryTest is Test {
             id.guardianVerifier = address(_verifier);
             id.signer = abi.encodePacked(
                 uint256(
-                    0xf2b0a2eb4a88cf7743460dda473a5a3e08c5c6db63f3ebd82c1c4a6bd6761f91
+                    0x9727212cfb34abd3e60d59074ab49f8455fd001ec67f3e3b0e8af6f5fa17b0bf
                 ),
                 uint256(
-                    0xa490c09076f43dc7fc91cab46568ef9f660ec9f684fb64343bb36a91e82c4693
+                    0x14567f015a8a88b1fd50b7272791d6190187cc4da46d9a0f7d49a22af25a4097
                 )
             );
             guardian.guardian = id;
@@ -155,10 +155,10 @@ contract PasskeySocialRecoveryTest is Test {
             id.guardianVerifier = address(_verifier);
             id.signer = abi.encodePacked(
                 uint256(
-                    0x34160c417cef5ef9a1c3b7950fe1bb78ca4ffbb727cd4726df4a732557fee5e9
+                    0x2b524330d507d6d91d1151def4181a86edb078c300b862fb1d3ef51a24cd2d25
                 ),
                 uint256(
-                    0x62c94c2d5357bfb3ebff9db5541d17a0e94d757d6581455fd73e8c624dc74f77
+                    0x7028f9c0043341edfe6ba9980edbf3e050b5e44af1268145eac181b9293f5343
                 )
             );
             guardian.guardian = id;
@@ -213,7 +213,7 @@ contract PasskeySocialRecoveryTest is Test {
             id.signer = configArg.guardianInfos[0].guardian.signer;
             permissions[0].guardian = id;
             permissions[0]
-                .signature = hex"32098de0f6585491bce967d578db5fc17ec7f11e0f0a298c0c299778fce4325047d57dfe4ca9f3d4e3f7802635af17efaf781d7df09b3c06ca884655f1349c4900000025d636379c6ca019fe4b03b02a66222c9ce4526a3a3a22ed464ee63b50dda27ef61d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000026222c226f726967696e223a2268747470733a2f2f706173736b65792e746573742e636f6d227d";
+                .signature = hex"1cf8f08f5f84e301bf3717a13f0251bb88c383350ec9ce71b297c8a0029f93f9b4d12863fd96ae06999da0fa6354fbecc77442f484541d555023da6a0c29ba7700000025d636379c6ca019fe4b03b02a66222c9ce4526a3a3a22ed464ee63b50dda27ef61d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000026222c226f726967696e223a2268747470733a2f2f706173736b65792e746573742e636f6d227d";
         }
         {
             Identity memory id;
@@ -221,7 +221,7 @@ contract PasskeySocialRecoveryTest is Test {
             id.signer = configArg.guardianInfos[1].guardian.signer;
             permissions[1].guardian = id;
             permissions[1]
-                .signature = hex"8bc63a15d927fafd15920576c2430e7fea3611cae0182d5d0b24e00d7abb713957fb4f839b9e827365f4265890580501294b62d4bcbca30e9e87b11fdbc04a9900000025d636379c6ca019fe4b03b02a66222c9ce4526a3a3a22ed464ee63b50dda27ef61d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000026222c226f726967696e223a2268747470733a2f2f706173736b65792e746573742e636f6d227d";
+                .signature = hex"e69f65c505be51990831bcf652106ef8743862d65a2225ee3737b847a140a0ef10d556b1e5649ad21afdde109f7abc542951409c907e6ba2415aedab64ca492600000025d636379c6ca019fe4b03b02a66222c9ce4526a3a3a22ed464ee63b50dda27ef61d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000026222c226f726967696e223a2268747470733a2f2f706173736b65792e746573742e636f6d227d";
         }
         {
             Identity memory id;
@@ -229,7 +229,7 @@ contract PasskeySocialRecoveryTest is Test {
             id.signer = configArg.guardianInfos[2].guardian.signer;
             permissions[2].guardian = id;
             permissions[2]
-                .signature = hex"1aac4cdc48dd1473d4ce11ee5af58ae380aefc1f580d1a1883bfa36841195de695accaa2cc3d3dde8e80a0d50ceeda8c829f877159dada8011c22c9414903eb700000025d636379c6ca019fe4b03b02a66222c9ce4526a3a3a22ed464ee63b50dda27ef61d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000026222c226f726967696e223a2268747470733a2f2f706173736b65792e746573742e636f6d227d";
+                .signature = hex"26988b571271cd4286676cce1d286b498f05a2a81dc38e67a624bff60164ce6fff7b6d43700901b18131ce155d480e8157da02169d03b0ed7fc7655677a8e42c00000025d636379c6ca019fe4b03b02a66222c9ce4526a3a3a22ed464ee63b50dda27ef61d00000000000000247b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2200000026222c226f726967696e223a2268747470733a2f2f706173736b65792e746573742e636f6d227d";
         }
 
         _recoveryModule.startRecovery(address(_account), 0, data, permissions);
