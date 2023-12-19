@@ -147,3 +147,11 @@ Using the above parameters, you can construct mock data for the Passkey Verifier
 ## **Contribution**
 
 Any contributions to this repository are welcome. For example, if you have ideas for other Verifiers or suggestions for improving the Social Recovery process, please submit an issue or PR.
+
+## Security and Liability
+----------------------
+All contracts are WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+## License
+-------
+All smart contracts are released under LGPL-3.0
